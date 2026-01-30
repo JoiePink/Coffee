@@ -86,14 +86,16 @@ function createLocationMarker(AmapInstance, center) {
   currentLocationMarker.value = marker
 }
 
-/** 定位成功 */
+/** 定位成功：若当前是从搜索进入查看某门店（有 storeId），只添加当前位置标记不移动地图中心，避免覆盖门店视图 */
 function onGeolocationComplete(AmapInstance, data) {
   console.warn('定位成功：', data)
   const position = data.position || data.location
   const center = parsePositionToCenter(position)
   if (!center || !map.value)
     return
-  setMapCenter(center)
+  const fromSearchStore = !!route.query.storeId
+  if (!fromSearchStore)
+    setMapCenter(center)
   createLocationMarker(AmapInstance, center)
 }
 
@@ -320,14 +322,22 @@ function locateToCurrentPosition() {
       top-0
       z-10
     >
-      <!-- 搜索：大点击区 + 按下反馈 -->
       <!-- eslint-disable-next-line uno/order -- 大点击区与 active 反馈顺序 -->
-      <div
-        class="min-h-11 min-w-11 flex cursor-pointer items-center justify-center gap-2 rounded-lg active:scale-95 active:bg-gray-100 dark:active:bg-gray-800"
-        @click="router.push('/search')"
-      >
-        <div class="i-carbon-search text-xl text-gray-800 dark:text-gray-200" />
+      <div class="flex items-center gap-1">
+        <div
+          class="min-h-11 min-w-11 flex cursor-pointer items-center justify-center gap-2 rounded-lg active:scale-95 active:bg-gray-100 dark:active:bg-gray-800"
+          @click="router.push('/search')"
+        >
+          <div class="i-carbon-search text-xl text-gray-800 dark:text-gray-200" />
+        </div>
+        <div
+          class="min-h-11 min-w-11 flex cursor-pointer items-center justify-center gap-2 rounded-lg active:scale-95 active:bg-gray-100 dark:active:bg-gray-800"
+          @click="router.push('/search')"
+        >
+          <div class="i-carbon-user-favorite text-xl text-gray-800 dark:text-gray-200" />
+        </div>
       </div>
+
       <div class="flex items-center gap-2">
         <div class="i-line-md-coffee-loop text-2xl text-gray-800 dark:text-gray-200" />
         <div class="text-gray-900 font-bold dark:text-gray-100">
