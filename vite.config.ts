@@ -7,6 +7,7 @@ import LinkAttributes from 'markdown-it-link-attributes'
 import Unocss from 'unocss/vite'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
+import { VantResolver } from '@vant/auto-import-resolver'
 import VueMacros from 'unplugin-vue-macros/vite'
 import Markdown from 'unplugin-vue-markdown/vite'
 import { VueRouterAutoImports } from 'unplugin-vue-router'
@@ -71,6 +72,7 @@ export default defineConfig({
       extensions: ['vue', 'md'],
       // allow auto import and register components used in markdown
       include: [/\.vue$/, /\.vue\?vue/, /\.md$/],
+      resolvers: [VantResolver()],
       dts: 'src/components.d.ts',
     }),
 

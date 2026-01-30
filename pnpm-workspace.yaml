@@ -1,5 +1,9 @@
 packages: []
 
+catalog:
+  '@vant/auto-import-resolver': ^1.3.0
+  vant: ^4.9.22
+
 catalogs:
 
   build:

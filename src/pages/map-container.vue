@@ -5,292 +5,425 @@ const map = ref(null)
 const currentLocationMarker = ref(null)
 const geolocation = ref(null)
 const Amap = ref(null)
+const show = ref(false)
+const list = ref([])
+const currentStore = ref({})
+const router = useRouter()
+const route = useRoute()
 
-onMounted(() => {
+/** 初始化地图 */
+function initMap() {
   window._AMapSecurityConfig = {
     securityJsCode: 'bf61b5b8457d13555c3d9e36321102b1',
   }
-  AMapLoader.load({
+  return AMapLoader.load({
     key: 'bf61b5b8457d13555c3d9e36321102b1',
     version: '2.0',
     plugins: ['AMap.Scale', 'AMap.MarkerCluster', 'AMap.Geolocation'],
   })
+}
+
+/** 初始化定位：创建 Geolocation 实例并请求当前位置，成功后居中并添加蓝色标记 */
+function initGeolocation(AmapInstance) {
+  AmapInstance.plugin('AMap.Geolocation', () => {
+    geolocation.value = new AmapInstance.Geolocation({
+      enableHighAccuracy: true,
+      timeout: 10000,
+      offset: [10, 20],
+      zoomToAccuracy: true,
+      position: 'RB',
+    })
+
+    geolocation.value.getCurrentPosition((status, result) => {
+      if (status === 'complete') {
+        onGeolocationComplete(AmapInstance, result)
+      }
+      else {
+        onGeolocationError(result)
+      }
+    })
+  })
+}
+
+/** 从定位结果中解析出 [lng, lat] 中心点 */
+function parsePositionToCenter(position) {
+  if (!position)
+    return null
+  const lng = position.lng ?? position.longitude
+  const lat = position.lat ?? position.latitude
+  if (lng == null || lat == null)
+    return null
+  return [lng, lat]
+}
+
+/** 设置地图中心 */
+function setMapCenter(center) {
+  if (map.value && center)
+    map.value.setCenter(center)
+}
+
+/** 移除旧标记并在 center 处创建蓝色当前位置标记（雷达波纹效果） */
+function createLocationMarker(AmapInstance, center) {
+  if (!map.value || !center)
+    return
+  if (currentLocationMarker.value) {
+    currentLocationMarker.value.setMap(null)
+  }
+  const markerContent = `
+    <div class="location-radar-wrap">
+      <span class="location-radar-ring location-radar-ring-1"></span>
+      <span class="location-radar-ring location-radar-ring-2"></span>
+      <span class="location-radar-ring location-radar-ring-3"></span>
+      <span class="location-radar-dot"></span>
+    </div>
+  `
+  const marker = new AmapInstance.Marker({
+    position: center,
+    content: markerContent,
+    offset: new AmapInstance.Pixel(-20, -20),
+  })
+  marker.setMap(map.value)
+  currentLocationMarker.value = marker
+}
+
+/** 定位成功 */
+function onGeolocationComplete(AmapInstance, data) {
+  console.warn('定位成功：', data)
+  const position = data.position || data.location
+  const center = parsePositionToCenter(position)
+  if (!center || !map.value)
+    return
+  setMapCenter(center)
+  createLocationMarker(AmapInstance, center)
+}
+
+/** 定位失败 */
+function onGeolocationError(data) {
+  console.error('定位失败：', data)
+}
+
+/** 请求门店列表，返回带坐标的门店与点位数组 */
+function fetchStoreList() {
+  return fetch('/store.json')
+    .then(res => res.json())
+    .then((json) => {
+      const data = json.data || []
+      const storeList = data.filter(
+        d => d.coordinates?.longitude != null && d.coordinates?.latitude != null,
+      )
+      const points = storeList.map(d => ({
+        lnglat: [d.coordinates.longitude, d.coordinates.latitude],
+        id: d.id,
+      }))
+      return { storeList, points }
+    })
+}
+
+/** 聚合点渲染：星巴克绿色系渐变 */
+function createRenderClusterMarker(AmapInstance, totalCount) {
+  return function (context) {
+    const factor = (context.count / totalCount) ** (1 / 18)
+    const div = document.createElement('div')
+    const Hue = 140 + factor * 18
+    const lightness = 50 - factor * 30
+    div.style.backgroundColor = `hsla(${Hue},100%,${lightness}%,0.7)`
+    const size = Math.round(30 + (context.count / totalCount) ** (1 / 5) * 20)
+    div.style.width = div.style.height = `${size}px`
+    div.style.border = `solid 1px hsl(${Hue},100%,${lightness}%)`
+    div.style.borderRadius = `${size / 2}px`
+    div.style.boxShadow = `0 0 5px hsla(${Hue},100%,${lightness + 20}%,0.5)`
+    div.innerHTML = context.count
+    div.style.lineHeight = `${size}px`
+    div.style.color = '#ffffff'
+    div.style.fontSize = '14px'
+    div.style.textAlign = 'center'
+    context.marker.setOffset(new AmapInstance.Pixel(-size / 2, -size / 2))
+    context.marker.setContent(div)
+  }
+}
+
+/** 单点渲染：星巴克主色 + 点击打开门店弹层 */
+function createRenderStoreMarker(AmapInstance) {
+  return function (context) {
+    const content
+      = '<div style="background-color: rgba(0, 100, 64, 0.8); height: 18px; width: 18px; border: 2px solid rgb(0, 100, 64); border-radius: 12px; box-shadow: rgba(0, 100, 64, 0.6) 0px 0px 4px;"></div>'
+    context.marker.setContent(content)
+    context.marker.setOffset(new AmapInstance.Pixel(-9, -9))
+
+    const pointData = context.data?.[0]
+    context.marker.on('click', (e) => {
+      const store = pointData?.id
+        ? list.value.find(item => item.id === pointData.id)
+        : null
+      if (store)
+        currentStore.value = store
+      if (e.originEvent) {
+        e.originEvent.stopPropagation()
+        e.originEvent.preventDefault()
+      }
+      nextTick(() => {
+        show.value = true
+      })
+    })
+  }
+}
+
+/** 地图平滑缩放到指定中心与级别 */
+function animateMapToZoomAndCenter(targetCenter, zoomDelta = 2, duration = 800) {
+  if (!map.value || !targetCenter)
+    return
+  const currentZoom = map.value.getZoom()
+  const currentCenter = map.value.getCenter()
+  const targetZoom = Math.min(currentZoom + zoomDelta, 18)
+  const easeOutCubic = t => 1 - (1 - t) ** 3
+  const startTime = Date.now()
+  const startCenter = [currentCenter.lng, currentCenter.lat]
+  const centerDiff = [targetCenter[0] - startCenter[0], targetCenter[1] - startCenter[1]]
+  const zoomDiff = targetZoom - currentZoom
+
+  const animate = () => {
+    const elapsed = Date.now() - startTime
+    const progress = Math.min(elapsed / duration, 1)
+    const eased = easeOutCubic(progress)
+    map.value.setZoomAndCenter(
+      currentZoom + zoomDiff * eased,
+      [startCenter[0] + centerDiff[0] * eased, startCenter[1] + centerDiff[1] * eased],
+      false,
+    )
+    if (progress < 1) {
+      requestAnimationFrame(animate)
+    }
+    else {
+      map.value.setZoomAndCenter(targetZoom, targetCenter, false)
+    }
+  }
+  requestAnimationFrame(animate)
+}
+
+/** 为聚合实例绑定点击放大：仅聚合点触发平滑缩放，单点不缩放 */
+function setupClusterClickZoom(cluster) {
+  cluster.on('click', (e) => {
+    const clusterCount = e.clusterData?.length ?? 0
+    if (clusterCount <= 1)
+      return
+    const center = e.lnglat ? [e.lnglat.lng, e.lnglat.lat] : null
+    if (center)
+      animateMapToZoomAndCenter(center)
+  })
+}
+
+/** 加载门店数据并在地图上渲染点聚合 */
+function loadAndRenderStores(AmapInstance) {
+  fetchStoreList()
+    .then(({ storeList, points }) => {
+      list.value = storeList
+      if (!points.length || !map.value)
+        return
+      const gridSize = 60
+      const cluster = new AmapInstance.MarkerCluster(map.value, points, {
+        gridSize,
+        renderClusterMarker: createRenderClusterMarker(AmapInstance, points.length),
+        renderMarker: createRenderStoreMarker(AmapInstance),
+      })
+      setupClusterClickZoom(cluster)
+    })
+    .catch(e => console.error(e))
+}
+
+/** 根据路由 query.storeId 打开对应门店详情弹层（从搜索页跳转时）：先放大地图到该点再出 popup */
+watch(
+  [() => route.query.storeId, list],
+  ([storeId, listVal]) => {
+    if (!storeId || !listVal?.length)
+      return
+    const store = listVal.find(item => item.id === storeId)
+    if (!store?.coordinates || store.coordinates.longitude == null || store.coordinates.latitude == null)
+      return
+    currentStore.value = store
+    const center = [store.coordinates.longitude, store.coordinates.latitude]
+    if (map.value) {
+      // 放大到最大级别（18）并居中到该门店，便于看清点位
+      map.value.setZoomAndCenter(18, center, false)
+      // 等地图移动/缩放完成后再弹出详情
+      const onMoveEnd = () => {
+        map.value?.off('moveend', onMoveEnd)
+        nextTick(() => {
+          show.value = true
+        })
+      }
+      map.value.on('moveend', onMoveEnd)
+      // 若地图已稳定（无动画）则延迟兜底打开 popup
+      setTimeout(() => {
+        if (!show.value)
+          onMoveEnd()
+      }, 900)
+    }
+    else {
+      nextTick(() => {
+        show.value = true
+      })
+    }
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  initMap()
     .then((AmapInstance) => {
       Amap.value = AmapInstance
-      // 创建地图
       map.value = new AmapInstance.Map('container', {
         viewMode: '3D',
         zoom: 11,
       })
 
-      // 初始化定位功能
-      AmapInstance.plugin('AMap.Geolocation', () => {
-        geolocation.value = new AmapInstance.Geolocation({
-          enableHighAccuracy: true, // 是否使用高精度定位，默认：true
-          timeout: 10000, // 设置定位超时时间，默认：无穷大
-          offset: [10, 20], // 定位按钮的停靠位置的偏移量
-          zoomToAccuracy: true, // 定位成功后调整地图视野范围使定位位置及精度范围视野内可见，默认：false
-          position: 'RB', // 定位按钮的排放位置,  RB表示右下
-        })
-
-        geolocation.value.getCurrentPosition((status, result) => {
-          if (status === 'complete') {
-            onComplete(result)
-          }
-          else {
-            onError(result)
-          }
-        })
-
-        function onComplete(data) {
-          // data是具体的定位信息
-          console.warn('定位成功：', data)
-          // 获取定位的经纬度
-          const position = data.position || data.location
-          if (position) {
-            // 设置地图中心为定位位置
-            const center = [
-              position.lng || position.longitude,
-              position.lat || position.latitude,
-            ]
-            map.value.setCenter(center)
-
-            // 如果已存在标记，先移除
-            if (currentLocationMarker.value) {
-              currentLocationMarker.value.setMap(null)
-            }
-
-            // 创建当前位置标记 - 使用蓝色圆点，区别于咖啡店的绿色标记
-            const markerContent
-              = '<div style="background-color: rgba(0, 123, 255, 0.9); height: 20px; width: 20px; border: 3px solid #ffffff; border-radius: 50%; box-shadow: rgba(0, 123, 255, 0.6) 0px 0px 8px;"></div>'
-            const marker = new AmapInstance.Marker({
-              position: center,
-              content: markerContent,
-              offset: new AmapInstance.Pixel(-10, -10),
-            })
-
-            // 将标记添加到地图
-            marker.setMap(map.value)
-            currentLocationMarker.value = marker
-          }
-        }
-
-        function onError(data) {
-          // 定位出错
-          console.error('定位失败：', data)
-        }
-      })
-
-      fetch('/store.json')
-        .then(res => res.json())
-        .then((json) => {
-          const data = json.data || []
-          const points = data
-            .filter(
-              d => d.coordinates?.longitude != null && d.coordinates?.latitude != null,
-            )
-            .map(d => ({ lnglat: [d.coordinates.longitude, d.coordinates.latitude] }))
-          if (points.length) {
-            const gridSize = 60
-            const count = points.length
-
-            // 自定义聚合点样式 - 星巴克绿色系渐变
-            const _renderClusterMarker = function (context) {
-              const factor = (context.count / count) ** (1 / 18)
-              const div = document.createElement('div')
-              // 星巴克主色 rgb(0, 100, 64) 对应 HSL 约 hsl(158, 100%, 20%)
-              // 从浅绿色(140)渐变到星巴克深绿色(158)
-              const Hue = 140 + factor * 18
-              // 从较亮的绿色(50%)渐变到较暗的星巴克绿(20%)
-              const lightness = 50 - factor * 30
-              const bgColor = `hsla(${Hue},100%,${lightness}%,0.7)`
-              const fontColor = '#ffffff'
-              const borderColor = `hsl(${Hue},100%,${lightness}%)`
-              const shadowColor = `hsla(${Hue},100%,${lightness + 20}%,0.5)`
-              div.style.backgroundColor = bgColor
-              const size = Math.round(30 + (context.count / count) ** (1 / 5) * 20)
-              div.style.width = div.style.height = `${size}px`
-              div.style.border = `solid 1px ${borderColor}`
-              div.style.borderRadius = `${size / 2}px`
-              div.style.boxShadow = `0 0 5px ${shadowColor}`
-              div.innerHTML = context.count
-              div.style.lineHeight = `${size}px`
-              div.style.color = fontColor
-              div.style.fontSize = '14px'
-              div.style.textAlign = 'center'
-              context.marker.setOffset(new AmapInstance.Pixel(-size / 2, -size / 2))
-              context.marker.setContent(div)
-            }
-
-            // 自定义非聚合点样式 - 星巴克主色
-            const _renderMarker = function (context) {
-              const content
-                = '<div style="background-color: rgba(0, 100, 64, 0.8); height: 18px; width: 18px; border: 2px solid rgb(0, 100, 64); border-radius: 12px; box-shadow: rgba(0, 100, 64, 0.6) 0px 0px 4px;"></div>'
-              const offset = new AmapInstance.Pixel(-9, -9)
-              context.marker.setContent(content)
-              context.marker.setOffset(offset)
-            }
-
-            // 创建完全自定义的点聚合
-            const _cluster = new AmapInstance.MarkerCluster(map.value, points, {
-              gridSize, // 设置网格像素大小
-              renderClusterMarker: _renderClusterMarker, // 自定义聚合点样式
-              renderMarker: _renderMarker, // 自定义非聚合点样式
-            })
-
-            // 监听聚合点点击事件，实现平滑放大
-            _cluster.on('click', (e) => {
-              // 获取点击的聚合点位置（多种方式尝试，确保兼容性）
-              let center = null
-
-              // 方式1: 从事件对象获取位置
-              if (e.lnglat) {
-                center = [e.lnglat.lng, e.lnglat.lat]
-              }
-              // 方式2: 从标记对象获取位置
-              else if (e.target && e.target.getPosition) {
-                const position = e.target.getPosition()
-                if (position) {
-                  center = [position.lng, position.lat]
-                }
-              }
-              // 方式3: 从聚合数据计算中心点
-              else if (e.clusterData && e.clusterData.length > 0) {
-                let totalLng = 0
-                let totalLat = 0
-                let validCount = 0
-                e.clusterData.forEach((item) => {
-                  const lnglat = item.lnglat || item.position
-                  if (Array.isArray(lnglat) && lnglat.length >= 2) {
-                    totalLng += lnglat[0]
-                    totalLat += lnglat[1]
-                    validCount++
-                  }
-                })
-                if (validCount > 0) {
-                  center = [totalLng / validCount, totalLat / validCount]
-                }
-              }
-
-              if (center) {
-                // 获取当前缩放级别和中心点
-                const currentZoom = map.value.getZoom()
-                const currentCenter = map.value.getCenter()
-                // 计算目标缩放级别（放大2级，但不超过最大缩放级别18）
-                const targetZoom = Math.min(currentZoom + 2, 18)
-
-                // 使用平滑的缓动动画函数
-                const easeOutCubic = t => 1 - (1 - t) ** 3
-                const duration = 800 // 动画时长800ms
-                const startTime = Date.now()
-                const startZoom = currentZoom
-                const zoomDiff = targetZoom - startZoom
-                const startCenter = [currentCenter.lng, currentCenter.lat]
-                const centerDiff = [
-                  center[0] - startCenter[0],
-                  center[1] - startCenter[1],
-                ]
-
-                // 平滑动画函数
-                const animate = () => {
-                  const elapsed = Date.now() - startTime
-                  const progress = Math.min(elapsed / duration, 1)
-                  const easedProgress = easeOutCubic(progress)
-
-                  // 同时更新缩放和中心点
-                  const currentZoomValue = startZoom + zoomDiff * easedProgress
-                  const currentCenterValue = [
-                    startCenter[0] + centerDiff[0] * easedProgress,
-                    startCenter[1] + centerDiff[1] * easedProgress,
-                  ]
-
-                  map.value.setZoomAndCenter(currentZoomValue, currentCenterValue, false)
-
-                  if (progress < 1) {
-                    requestAnimationFrame(animate)
-                  }
-                  else {
-                    // 确保最终精确到达目标值
-                    map.value.setZoomAndCenter(targetZoom, center, false)
-                  }
-                }
-
-                // 开始动画
-                requestAnimationFrame(animate)
-              }
-            })
-          }
-        })
-        .catch(e => console.error(e))
+      initGeolocation(AmapInstance)
+      loadAndRenderStores(AmapInstance)
     })
     .catch(e => console.error(e))
 })
 
-// 定位到当前位置的函数
+/** 定位到当前位置：请求定位后居中并更新蓝色标记，复用 onGeolocationComplete / onGeolocationError */
 function locateToCurrentPosition() {
-  if (geolocation.value && map.value) {
-    geolocation.value.getCurrentPosition((status, result) => {
-      if (status === 'complete') {
-        const position = result.position || result.location
-        if (position && Amap.value) {
-          // 设置地图中心为定位位置
-          const center = [
-            position.lng || position.longitude,
-            position.lat || position.latitude,
-          ]
-          map.value.setCenter(center)
-
-          // 如果已存在标记，先移除
-          if (currentLocationMarker.value) {
-            currentLocationMarker.value.setMap(null)
-          }
-
-          // 创建当前位置标记 - 使用蓝色圆点，区别于咖啡店的绿色标记
-          const markerContent
-            = '<div style="background-color: rgba(0, 123, 255, 0.9); height: 20px; width: 20px; border: 3px solid #ffffff; border-radius: 50%; box-shadow: rgba(0, 123, 255, 0.6) 0px 0px 8px;"></div>'
-          const marker = new Amap.value.Marker({
-            position: center,
-            content: markerContent,
-            offset: new Amap.value.Pixel(-10, -10),
-          })
-
-          // 将标记添加到地图
-          marker.setMap(map.value)
-          currentLocationMarker.value = marker
-        }
-      }
-      else {
-        console.error('定位失败：', result)
-      }
-    })
-  }
+  if (!geolocation.value || !map.value)
+    return
+  geolocation.value.getCurrentPosition((status, result) => {
+    if (status === 'complete') {
+      onGeolocationComplete(Amap.value, result)
+    }
+    else {
+      onGeolocationError(result)
+    }
+  })
 }
 </script>
 
 <template>
-  <div
-    class="h-12 w-full flex items-center justify-between gap-2 p-2"
-    border="b gray-200"
-    fixed
-    left-0
-    right-0
-    top-0
-    z-10
-  >
-    <div class="flex items-center gap-2">
-      <div class="i-carbon-search" />
-    </div>
-    <div class="flex items-center gap-2">
-      <div class="i-line-md-coffee-loop text-2xl" />
-      <div text-black font-bold>
-        COFFEE
+  <div>
+    <div
+      class="h-12 w-full flex items-center justify-between gap-2 p-2"
+      border="b gray-200"
+      fixed
+      left-0
+      right-0
+      top-0
+      z-10
+    >
+      <!-- 搜索：大点击区 + 按下反馈 -->
+      <!-- eslint-disable-next-line uno/order -- 大点击区与 active 反馈顺序 -->
+      <div
+        class="flex min-h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-lg active:scale-95 active:bg-gray-100"
+        @click="router.push('/search')"
+      >
+        <div class="i-carbon-search text-xl" />
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="i-line-md-coffee-loop text-2xl" />
+        <div text-black font-bold>
+          coffee
+        </div>
+      </div>
+      <!-- 定位：大点击区 + 按下反馈 -->
+      <!-- eslint-disable-next-line uno/order -- 大点击区与 active 反馈顺序 -->
+      <div
+        class="flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-lg active:scale-95 active:bg-gray-100"
+        @click="locateToCurrentPosition"
+      >
+        <div class="i-carbon-location-heart text-xl" />
       </div>
     </div>
-    <div class="flex items-center" @click="locateToCurrentPosition">
-      <div class="i-carbon-location-heart cursor-pointer" />
-    </div>
+    <div id="container" class="mt-3rem h-[calc(100vh-3rem)] w-full" />
+    <van-popup v-model:show="show" :style="{ padding: '20px' }" position="bottom" round>
+      <div text-xl font-bold>
+        星巴克 ({{ currentStore.name || "--" }})
+      </div>
+      <div class="mt-2 flex items-start gap-2">
+        <div class="i-carbon-location mt0.6" />
+        <div class="flex-1">
+          {{ currentStore.address.streetAddressLine3 || "--" }}
+        </div>
+      </div>
+      <div class="mt-2 flex items-center gap-2">
+        <div class="i-carbon-time" />
+        营业时间: {{ currentStore.today.openTime }}-{{ currentStore.today.closeTime }}
+      </div>
+      <div class="mt-2 flex items-center gap-2">
+        <div
+          :class="
+            currentStore.hasArtwork ? 'i-carbon-chart-bubble-packed' : 'i-carbon-heat-map'
+          "
+        />
+        {{ currentStore.hasArtwork ? "特色艺术装饰/建筑设计" : "标准门店" }}
+      </div>
+      <div class="mt-4">
+        <div class="mb-2 text-sm text-gray-600 font-semibold">
+          门店标签
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <div
+            v-for="i in currentStore.features"
+            :key="i"
+            class="border border-gray-200 rounded-lg bg-gray-50 p-2 text-xs"
+          >
+            <div class="text-green-600 font-bold">
+              {{ i }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </van-popup>
   </div>
-  <div id="container" class="mt-3rem h-[calc(100vh-3rem)] w-full" />
 </template>
 
 <style scoped></style>
+
+<style>
+/* 当前位置雷达波纹效果（非 scoped：标记由 AMap 动态插入） */
+.location-radar-wrap {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.location-radar-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: rgba(0, 123, 255, 0.95);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(0, 123, 255, 0.6);
+  z-index: 2;
+}
+.location-radar-ring {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(0, 123, 255, 0.7);
+  border-radius: 50%;
+  animation: location-radar-ripple 2s ease-out infinite;
+  z-index: 1;
+}
+.location-radar-ring-1 {
+  animation-delay: 0s;
+}
+.location-radar-ring-2 {
+  animation-delay: 0.66s;
+}
+.location-radar-ring-3 {
+  animation-delay: 1.33s;
+}
+@keyframes location-radar-ripple {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.9;
+    border-width: 2px;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+</style>

@@ -1,0 +1,125 @@
+<script setup>
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+const searchVal = ref('')
+/** 完整门店列表（带坐标），用于模糊查询 */
+const allStores = ref([])
+
+/** 请求门店列表，返回带坐标的门店 */
+function fetchStoreList() {
+  return fetch('/store.json')
+    .then(res => res.json())
+    .then((json) => {
+      const data = json.data || []
+      const list = data.filter(
+        d => d.coordinates?.longitude != null && d.coordinates?.latitude != null,
+      )
+      allStores.value = list
+    })
+}
+
+/** 根据关键词在 name、city、streetAddressLine1、streetAddressLine3 中模糊匹配 */
+function matchStore(keyword, store) {
+  const k = keyword.toLowerCase()
+  const name = (store.name ?? '').toLowerCase()
+  const city = (store.address?.city ?? '').toLowerCase()
+  const line1 = (store.address?.streetAddressLine1 ?? '').toLowerCase()
+  const line3 = (store.address?.streetAddressLine3 ?? '').toLowerCase()
+  return name.includes(k) || city.includes(k) || line1.includes(k) || line3.includes(k)
+}
+
+/** 当前搜索关键词（防抖后），用于过滤列表 */
+const searchKeyword = ref('')
+const setSearchKeyword = useDebounceFn((val) => {
+  searchKeyword.value = (val ?? '').trim()
+}, 300)
+
+watch(searchVal, (val) => {
+  setSearchKeyword(val)
+})
+
+/** 模糊查询后的门店列表 */
+const storeList = computed(() => {
+  const keyword = searchKeyword.value
+  if (!keyword)
+    return allStores.value
+  return allStores.value.filter(store => matchStore(keyword, store))
+})
+
+/** 点击门店：跳转地图页并打开该门店详情弹层 */
+function goToMapWithStore(store) {
+  router.push({ path: '/map-container', query: { storeId: store.id } })
+}
+
+onMounted(() => {
+  fetchStoreList()
+})
+</script>
+
+<template>
+  <div>
+    <div
+      class="h-12 w-full flex items-center justify-between gap-2 bg-white p-2"
+      border="b gray-200"
+      fixed
+      left-0
+      right-0
+      top-0
+      z-10
+    >
+      <!-- 返回：大点击区 + 按下反馈 -->
+      <div
+        class="flex min-h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-lg active:scale-95 active:bg-gray-100"
+        @click="router.push('/map-container')"
+      >
+        <div class="i-carbon-return text-xl" />
+      </div>
+      <div class="flex items-center gap-2" @click="router.push('/map-container')">
+        <div class="i-line-md-coffee-loop text-2xl" />
+        <div text-black font-bold>
+          coffee
+        </div>
+      </div>
+      <div class="flex items-center">
+        <div class="i-carbon-location-heart cursor-pointer color-#fff" />
+      </div>
+    </div>
+    <div
+      class="w-full flex justify-center bg-white"
+      fixed
+      left-0
+      right-0
+      top-12
+      z-10
+    >
+      <van-search v-model="searchVal" style="width: 100%" placeholder="请输入门店名称" />
+    </div>
+    <div m3 my2 pt-26 space-y-2>
+      <div
+        v-for="store in storeList"
+        :key="store.id"
+        class="cursor-pointer border-b border-gray-200 pb-2 active:bg-gray-100"
+        @click="goToMapWithStore(store)"
+      >
+        <p font-bold>
+          {{ store.name }}
+        </p>
+        <div my1 text-xs text-gray-600>
+          {{ store.address?.streetAddressLine3 || store.address?.city || '—' }}
+        </div>
+        <div flex items-center gap2 text-xs>
+          <div color="#f3ae1a">
+            {{ store.address?.city || '—' }}
+          </div>
+          <div v-if="store.features?.length" class="text-#09593c font-bold">
+            {{ store.features.join(' ') }}
+          </div>
+        </div>
+      </div>
+      <div v-if="searchVal && storeList.length === 0" py-4 text-center text-sm text-gray-500>
+        未找到相关门店
+      </div>
+    </div>
+  </div>
+</template>

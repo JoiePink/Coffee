@@ -22,6 +22,7 @@
     "@vueuse/core": "catalog:frontend",
     "nprogress": "catalog:frontend",
     "pinia": "catalog:frontend",
+    "vant": "catalog:default",
     "vue": "catalog:frontend",
     "vue-i18n": "catalog:frontend",
     "vue-router": "catalog:frontend"
@@ -35,6 +36,7 @@
     "@types/markdown-it-link-attributes": "catalog:types",
     "@types/nprogress": "catalog:types",
     "@unocss/eslint-config": "catalog:build",
+    "@vant/auto-import-resolver": "catalog:default",
     "@vitejs/plugin-vue": "catalog:build",
     "@vue-macros/volar": "catalog:dev",
     "@vue/test-utils": "catalog:dev",
