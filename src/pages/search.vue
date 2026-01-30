@@ -60,8 +60,8 @@ onMounted(() => {
 <template>
   <div>
     <div
-      class="h-12 w-full flex items-center justify-between gap-2 bg-white p-2"
-      border="b gray-200"
+      class="h-12 w-full flex items-center justify-between gap-2 bg-white p-2 dark:bg-[#1b1b1b]"
+      border="b gray-200 dark:border-gray-700"
       fixed
       left-0
       right-0
@@ -70,23 +70,30 @@ onMounted(() => {
     >
       <!-- 返回：大点击区 + 按下反馈 -->
       <div
-        class="flex min-h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-lg active:scale-95 active:bg-gray-100"
+        class="min-h-11 min-w-11 flex cursor-pointer items-center justify-center gap-2 rounded-lg active:scale-95 active:bg-gray-100 dark:active:bg-gray-800"
         @click="router.push('/map-container')"
       >
-        <div class="i-carbon-return text-xl" />
+        <div class="i-carbon-return text-xl text-gray-800 dark:text-gray-200" />
       </div>
       <div class="flex items-center gap-2" @click="router.push('/map-container')">
-        <div class="i-line-md-coffee-loop text-2xl" />
-        <div text-black font-bold>
+        <div class="i-line-md-coffee-loop text-2xl text-gray-800 dark:text-gray-200" />
+        <div class="text-gray-900 font-bold dark:text-gray-100">
           coffee
         </div>
       </div>
-      <div class="flex items-center">
-        <div class="i-carbon-location-heart cursor-pointer color-#fff" />
+      <div class="flex items-center gap-1">
+        <div
+          class="min-h-11 min-w-11 flex cursor-pointer items-center justify-center rounded-lg active:scale-95 active:bg-gray-100 dark:active:bg-gray-800"
+          @click="toggleDark()"
+        >
+          <div v-if="isDark" class="i-carbon-sun text-xl text-amber-400" />
+          <div v-else class="i-carbon-moon text-xl text-gray-600" />
+        </div>
+        <div class="i-carbon-location-heart cursor-pointer text-gray-700 dark:text-gray-300" />
       </div>
     </div>
     <div
-      class="w-full flex justify-center bg-white"
+      class="w-full flex justify-center bg-white dark:bg-[#1b1b1b]"
       fixed
       left-0
       right-0
@@ -95,29 +102,29 @@ onMounted(() => {
     >
       <van-search v-model="searchVal" style="width: 100%" placeholder="请输入门店名称" />
     </div>
-    <div m3 my2 pt-26 space-y-2>
+    <div class="m3 my2 bg-white pt-26 space-y-2 dark:bg-[#1b1b1b]">
       <div
         v-for="store in storeList"
         :key="store.id"
-        class="cursor-pointer border-b border-gray-200 pb-2 active:bg-gray-100"
+        class="cursor-pointer border-b border-gray-200 pb-2 dark:border-gray-700 active:bg-gray-100 dark:active:bg-gray-800"
         @click="goToMapWithStore(store)"
       >
-        <p font-bold>
+        <p class="text-gray-900 font-bold dark:text-gray-100">
           {{ store.name }}
         </p>
-        <div my1 text-xs text-gray-600>
+        <div class="my1 text-xs text-gray-600 dark:text-gray-400">
           {{ store.address?.streetAddressLine3 || store.address?.city || '—' }}
         </div>
-        <div flex items-center gap2 text-xs>
-          <div color="#f3ae1a">
+        <div class="flex items-center gap-2 text-xs">
+          <div class="text-amber-600 dark:text-amber-400">
             {{ store.address?.city || '—' }}
           </div>
-          <div v-if="store.features?.length" class="text-#09593c font-bold">
+          <div v-if="store.features?.length" class="text-green-700 font-bold dark:text-green-400">
             {{ store.features.join(' ') }}
           </div>
         </div>
       </div>
-      <div v-if="searchVal && storeList.length === 0" py-4 text-center text-sm text-gray-500>
+      <div v-if="searchVal && storeList.length === 0" class="py-4 text-center text-sm text-gray-500 dark:text-gray-400">
         未找到相关门店
       </div>
     </div>

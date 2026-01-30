@@ -9,8 +9,14 @@ body,
 }
 
 html.dark {
-  background: #121212;
+  background: #1b1b1b;
+  color: #e5e5e5;
   color-scheme: dark;
+}
+
+html.dark body {
+  background: #1b1b1b;
+  color: #e5e5e5;
 }
 
 #nprogress {

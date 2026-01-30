@@ -267,6 +267,13 @@ watch(
   { immediate: true },
 )
 
+/** 根据 isDark 设置地图底图样式（深色/标准） */
+function applyMapStyle() {
+  if (!map.value)
+    return
+  map.value.setMapStyle(isDark.value ? 'amap://styles/dark' : 'amap://styles/normal')
+}
+
 onMounted(() => {
   initMap()
     .then((AmapInstance) => {
@@ -274,12 +281,17 @@ onMounted(() => {
       map.value = new AmapInstance.Map('container', {
         viewMode: '3D',
         zoom: 11,
+        mapStyle: isDark.value ? 'amap://styles/dark' : 'amap://styles/normal',
       })
 
       initGeolocation(AmapInstance)
       loadAndRenderStores(AmapInstance)
     })
     .catch(e => console.error(e))
+})
+
+watch(isDark, () => {
+  applyMapStyle()
 })
 
 /** 定位到当前位置：请求定位后居中并更新蓝色标记，复用 onGeolocationComplete / onGeolocationError */
@@ -300,8 +312,8 @@ function locateToCurrentPosition() {
 <template>
   <div>
     <div
-      class="h-12 w-full flex items-center justify-between gap-2 p-2"
-      border="b gray-200"
+      class="h-12 w-full flex items-center justify-between gap-2 bg-white p-2 dark:bg-[#1b1b1b]"
+      border="b gray-200 dark:border-gray-700"
       fixed
       left-0
       right-0
@@ -311,42 +323,50 @@ function locateToCurrentPosition() {
       <!-- 搜索：大点击区 + 按下反馈 -->
       <!-- eslint-disable-next-line uno/order -- 大点击区与 active 反馈顺序 -->
       <div
-        class="flex min-h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-lg active:scale-95 active:bg-gray-100"
+        class="min-h-11 min-w-11 flex cursor-pointer items-center justify-center gap-2 rounded-lg active:scale-95 active:bg-gray-100 dark:active:bg-gray-800"
         @click="router.push('/search')"
       >
-        <div class="i-carbon-search text-xl" />
+        <div class="i-carbon-search text-xl text-gray-800 dark:text-gray-200" />
       </div>
       <div class="flex items-center gap-2">
-        <div class="i-line-md-coffee-loop text-2xl" />
-        <div text-black font-bold>
+        <div class="i-line-md-coffee-loop text-2xl text-gray-800 dark:text-gray-200" />
+        <div class="text-gray-900 font-bold dark:text-gray-100">
           coffee
         </div>
       </div>
-      <!-- 定位：大点击区 + 按下反馈 -->
-      <!-- eslint-disable-next-line uno/order -- 大点击区与 active 反馈顺序 -->
-      <div
-        class="flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-lg active:scale-95 active:bg-gray-100"
-        @click="locateToCurrentPosition"
-      >
-        <div class="i-carbon-location-heart text-xl" />
+      <div class="flex items-center gap-1">
+        <div
+          class="min-h-11 min-w-11 flex cursor-pointer items-center justify-center rounded-lg active:scale-95 active:bg-gray-100 dark:active:bg-gray-800"
+          @click="toggleDark()"
+        >
+          <div v-if="isDark" class="i-carbon-sun text-xl text-amber-400" />
+          <div v-else class="i-carbon-moon text-xl text-gray-600" />
+        </div>
+        <!-- 定位：大点击区 + 按下反馈 -->
+        <div
+          class="min-h-11 min-w-11 flex cursor-pointer items-center justify-center rounded-lg active:scale-95 active:bg-gray-100 dark:active:bg-gray-800"
+          @click="locateToCurrentPosition"
+        >
+          <div class="i-carbon-location-heart text-xl text-gray-700 dark:text-gray-300" />
+        </div>
       </div>
     </div>
     <div id="container" class="mt-3rem h-[calc(100vh-3rem)] w-full" />
     <van-popup v-model:show="show" :style="{ padding: '20px' }" position="bottom" round>
-      <div text-xl font-bold>
+      <div class="text-xl text-gray-900 font-bold dark:text-gray-100">
         星巴克 ({{ currentStore.name || "--" }})
       </div>
-      <div class="mt-2 flex items-start gap-2">
+      <div class="mt-2 flex items-start gap-2 text-gray-700 dark:text-gray-300">
         <div class="i-carbon-location mt0.6" />
         <div class="flex-1">
           {{ currentStore.address.streetAddressLine3 || "--" }}
         </div>
       </div>
-      <div class="mt-2 flex items-center gap-2">
+      <div class="mt-2 flex items-center gap-2 text-gray-700 dark:text-gray-300">
         <div class="i-carbon-time" />
         营业时间: {{ currentStore.today.openTime }}-{{ currentStore.today.closeTime }}
       </div>
-      <div class="mt-2 flex items-center gap-2">
+      <div class="mt-2 flex items-center gap-2 text-gray-700 dark:text-gray-300">
         <div
           :class="
             currentStore.hasArtwork ? 'i-carbon-chart-bubble-packed' : 'i-carbon-heat-map'
@@ -355,16 +375,16 @@ function locateToCurrentPosition() {
         {{ currentStore.hasArtwork ? "特色艺术装饰/建筑设计" : "标准门店" }}
       </div>
       <div class="mt-4">
-        <div class="mb-2 text-sm text-gray-600 font-semibold">
+        <div class="mb-2 text-sm text-gray-600 font-semibold dark:text-gray-400">
           门店标签
         </div>
         <div class="flex flex-wrap gap-2">
           <div
             v-for="i in currentStore.features"
             :key="i"
-            class="border border-gray-200 rounded-lg bg-gray-50 p-2 text-xs"
+            class="border border-gray-200 rounded-lg bg-gray-50 p-2 text-xs dark:border-gray-600 dark:bg-gray-800"
           >
-            <div class="text-green-600 font-bold">
+            <div class="text-green-600 font-bold dark:text-green-400">
               {{ i }}
             </div>
           </div>

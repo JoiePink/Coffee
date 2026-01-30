@@ -3,7 +3,7 @@
 // you can use this to manipulate the document head in any components,
 // they will be rendered correctly in the html results with vite-ssg
 useHead({
-  title: 'Vitesse',
+  title: 'coffee',
   meta: [
     {
       name: 'description',
@@ -25,5 +25,7 @@ useHead({
 </script>
 
 <template>
-  <RouterView />
+  <van-config-provider :theme="isDark ? 'dark' : 'light'">
+    <RouterView />
+  </van-config-provider>
 </template>
