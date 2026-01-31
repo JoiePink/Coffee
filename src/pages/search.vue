@@ -49,7 +49,7 @@ const storeList = computed(() => {
 
 /** 点击门店：跳转地图页并打开该门店详情弹层 */
 function goToMapWithStore(store) {
-  router.push({ path: '/map-container', query: { storeId: store.id } })
+  router.push({ path: '/', query: { storeId: store.id } })
 }
 
 onMounted(() => {
@@ -68,14 +68,13 @@ onMounted(() => {
       top-0
       z-10
     >
-      <!-- 返回：大点击区 + 按下反馈 -->
       <div
         class="min-h-11 min-w-11 flex cursor-pointer items-center justify-center gap-2 rounded-lg active:scale-95 active:bg-gray-100 dark:active:bg-gray-800"
-        @click="router.push('/map-container')"
+        @click="router.push('/')"
       >
         <div class="i-carbon-return text-xl text-gray-800 dark:text-gray-200" />
       </div>
-      <div class="flex items-center gap-2" @click="router.push('/map-container')">
+      <div class="flex items-center gap-2" @click="router.push('/')">
         <div class="i-line-md-coffee-loop text-2xl text-gray-800 dark:text-gray-200" />
         <div class="text-gray-900 font-bold dark:text-gray-100">
           coffee

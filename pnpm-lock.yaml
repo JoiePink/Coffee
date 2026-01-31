@@ -77,6 +77,9 @@ catalogs:
     '@antfu/eslint-config':
       specifier: ^4.11.0
       version: 4.11.0
+    '@iconify-json/arcticons':
+      specifier: ^1.2.47
+      version: 1.2.47
     '@iconify-json/carbon':
       specifier: ^1.2.8
       version: 1.2.8
@@ -164,6 +167,9 @@ importers:
       '@amap/amap-jsapi-loader':
         specifier: catalog:frontend
         version: 1.0.1
+      '@iconify-json/simple-icons':
+        specifier: ^1.2.68
+        version: 1.2.68
       '@unhead/vue':
         specifier: catalog:frontend
         version: 2.0.2(vue@3.5.13(typescript@5.8.2))
@@ -195,6 +201,9 @@ importers:
       '@antfu/eslint-config':
         specifier: catalog:dev
         version: 4.11.0(@typescript-eslint/utils@8.28.0(eslint@9.23.0(jiti@2.4.2))(typescript@5.8.2))(@unocss/eslint-plugin@65.4.0(eslint@9.23.0(jiti@2.4.2))(typescript@5.8.2))(@vue/compiler-sfc@3.5.13)(eslint-plugin-format@1.0.1(eslint@9.23.0(jiti@2.4.2)))(eslint@9.23.0(jiti@2.4.2))(typescript@5.8.2)(vitest@3.0.9(@types/debug@4.1.12)(@types/node@20.2.3)(jiti@2.4.2)(jsdom@26.0.0)(terser@5.17.6)(tsx@4.19.2)(yaml@2.7.0))
+      '@iconify-json/arcticons':
+        specifier: catalog:dev
+        version: 1.2.47
       '@iconify-json/carbon':
         specifier: catalog:dev
         version: 1.2.8
@@ -1416,11 +1425,17 @@ packages:
     resolution: {integrity: sha512-xeO57FpIu4p1Ri3Jq/EXq4ClRm86dVF2z/+kvFnyqVYRavTZmaFaUBbWCOuuTh0o/g7DSsk6kc2vrS4Vl5oPOQ==}
     engines: {node: '>=18.18'}
 
+  '@iconify-json/arcticons@1.2.47':
+    resolution: {integrity: sha512-f448UlDnL5GZih7miVHI3G9PyunpJs4I+o1H6PPICeMGlt5N7n/oilHGmuN+NnGX3CbKfHwc+Tib71CejKA/BQ==}
+
   '@iconify-json/carbon@1.2.8':
     resolution: {integrity: sha512-6xh4YiFBz6qoSnB3XMe23WvjTJroDFXB17J1MbiT7nATFe+70+em1acRXr8hgP/gYpwFMHFc4IvjA/IPTPnTzg==}
 
   '@iconify-json/line-md@1.2.13':
     resolution: {integrity: sha512-XFXThXsEQ2Wzzn+ze2T1d+JHkkFvI1AxiVKnOox4qFbdR9EVikckZlUK+/DUsV4zSy6pMQAgXpIk+1xG8qFYPQ==}
+
+  '@iconify-json/simple-icons@1.2.68':
+    resolution: {integrity: sha512-bQPl1zuZlX6AnofreA1v7J+hoPncrFMppqGboe/SH54jZO37meiBUGBqNOxEpc0HKfZGxJaVVJwZd4gdMYu3hw==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -6888,11 +6903,19 @@ snapshots:
 
   '@humanwhocodes/retry@0.4.2': {}
 
+  '@iconify-json/arcticons@1.2.47':
+    dependencies:
+      '@iconify/types': 2.0.0
+
   '@iconify-json/carbon@1.2.8':
     dependencies:
       '@iconify/types': 2.0.0
 
   '@iconify-json/line-md@1.2.13':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify-json/simple-icons@1.2.68':
     dependencies:
       '@iconify/types': 2.0.0
 

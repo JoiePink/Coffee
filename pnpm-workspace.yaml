@@ -35,6 +35,8 @@ catalogs:
     '@antfu/eslint-config': ^4.11.0
     '@iconify-json/carbon': ^1.2.8
     '@iconify-json/line-md': ^1.2.13
+    '@iconify-json/arcticons': ^1.2.47
+    '@iconify-json/simple-icons': ^1.2.68
     '@vue-macros/volar': ^3.0.0-beta.7
     '@vue/test-utils': ^2.4.6
     eslint: ^9.23.0

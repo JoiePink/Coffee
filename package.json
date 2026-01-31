@@ -29,8 +29,10 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "catalog:dev",
+    "@iconify-json/arcticons": "catalog:dev",
     "@iconify-json/carbon": "catalog:dev",
     "@iconify-json/line-md": "catalog:dev",
+    "@iconify-json/simple-icons": "catalog:dev",
     "@intlify/unplugin-vue-i18n": "catalog:build",
     "@shikijs/markdown-it": "catalog:build",
     "@types/markdown-it-link-attributes": "catalog:types",
