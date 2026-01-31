@@ -68,10 +68,7 @@ onMounted(() => {
       top-0
       z-10
     >
-      <div
-        class="min-h-11 min-w-11 flex cursor-pointer items-center justify-center gap-2 rounded-lg active:scale-95 active:bg-gray-100 dark:active:bg-gray-800"
-        @click="router.push('/')"
-      >
+      <div class="icon-link" @click="router.push('/')">
         <div class="i-carbon-return text-xl text-gray-800 dark:text-gray-200" />
       </div>
       <div class="flex items-center gap-2" @click="router.push('/')">
@@ -81,14 +78,13 @@ onMounted(() => {
         </div>
       </div>
       <div class="flex items-center gap-1">
-        <div
-          class="min-h-11 min-w-11 flex cursor-pointer items-center justify-center rounded-lg active:scale-95 active:bg-gray-100 dark:active:bg-gray-800"
-          @click="toggleDark()"
-        >
+        <div class="icon-link" @click="toggleDark()">
           <div v-if="isDark" class="i-carbon-sun text-xl text-amber-400" />
           <div v-else class="i-carbon-moon text-xl text-gray-600" />
         </div>
-        <div class="i-carbon-location-heart cursor-pointer text-gray-700 dark:text-gray-300" />
+        <!-- <div class="icon-link" @click="router.push('/')">
+          <div class="i-carbon-location-heart text-xl text-gray-700 dark:text-gray-300" />
+        </div> -->
       </div>
     </div>
     <div
@@ -99,7 +95,7 @@ onMounted(() => {
       top-12
       z-10
     >
-      <van-search v-model="searchVal" style="width: 100%" placeholder="请输入门店名称" />
+      <van-search v-model="searchVal" style="width: 100%" placeholder="请输入搜索关键字" />
     </div>
     <div class="m3 my2 bg-white pt-26 space-y-2 dark:bg-[#1b1b1b]">
       <div

@@ -363,7 +363,7 @@ function locateToCurrentPosition() {
     >
       <!-- eslint-disable-next-line uno/order -- 大点击区与 active 反馈顺序 -->
       <div class="flex items-center gap-1">
-        <div class="icon-links" @click="router.push('/search')">
+        <div class="icon-link" @click="router.push('/search')">
           <div class="i-carbon-search text-xl text-gray-800 dark:text-gray-200" />
         </div>
         <div class="icon-link" @click="authorPopupShow = true">
