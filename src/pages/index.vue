@@ -1,19 +1,23 @@
 <script setup>
-const map = ref(null)
-const currentLocationMarker = ref(null)
-const geolocation = ref(null)
-const Amap = ref(null)
+/** 高德地图实例等用 shallowRef，避免 Vue 深度代理导致 SDK 内部 postMessage 克隆报错 */
+const map = shallowRef(null)
+const currentLocationMarker = shallowRef(null)
+const geolocation = shallowRef(null)
+const Amap = shallowRef(null)
 const show = ref(false)
 const authorPopupShow = ref(false)
 const list = ref([])
 const currentStore = ref({})
-const router = useRouter()
 const pointList = ref([])
 /** 当前视野内的点位，随视口变化更新 */
 const pointsInBounds = ref([])
-/** 点聚合实例，用于视口变化时先销毁再重建 */
-const clusterRef = ref(null)
+/** 点聚合实例，用于视口变化时先销毁再重建（shallowRef 避免被深度代理） */
+const clusterRef = shallowRef(null)
+/** 当前定位 [lng, lat]，定位成功后写入，用于计算最近门店 */
+const currentLocation = ref(null)
 
+/** 主题切换中（等地图样式完全切换后再隐藏，避免导航栏已变但地图还未变） */
+const themeChanging = ref(false)
 /** 首屏 loading：进入页即显示，定位完成且地图 complete 后结束 */
 const firstScreenLoading = ref(true)
 const mapReady = ref(false)
@@ -56,6 +60,119 @@ const amapNavUrl = computed(() => {
   return `https://uri.amap.com/navigation?to=${lng},${lat},${encodeURIComponent(name)}`
 })
 const route = useRoute()
+
+/** 搜索弹层（替代 router.push('/search')，避免 GitHub Pages 下路由切换慢） */
+const searchPopupShow = ref(false)
+const searchVal = ref('')
+const searchKeyword = ref('')
+const setSearchKeyword = useDebounceFn((val) => {
+  searchKeyword.value = (val ?? '').trim()
+}, 300)
+watch(searchVal, val => setSearchKeyword(val))
+
+function matchStore(keyword, store) {
+  const k = keyword.toLowerCase()
+  const name = (store.name ?? '').toLowerCase()
+  const city = (store.address?.city ?? '').toLowerCase()
+  const line1 = (store.address?.streetAddressLine1 ?? '').toLowerCase()
+  const line3 = (store.address?.streetAddressLine3 ?? '').toLowerCase()
+  return name.includes(k) || city.includes(k) || line1.includes(k) || line3.includes(k)
+}
+
+const searchFilteredList = computed(() => {
+  const keyword = searchKeyword.value
+  if (!keyword)
+    return list.value
+  return list.value.filter(store => matchStore(keyword, store))
+})
+
+/** Vant List 分批加载：每批条数 */
+const SEARCH_PAGE_SIZE = 10
+/** 搜索弹层内实际展示的门店（分批 push） */
+const searchDisplayList = ref([])
+const searchListLoading = ref(false)
+const searchListFinished = ref(false)
+/** 列表加载失败（如拉取门店列表失败），点击可重试 */
+const searchListError = ref(false)
+
+/** 重置为只展示前 20 条（防抖结束或弹层打开时调用） */
+function resetSearchDisplayList() {
+  const full = searchFilteredList.value
+  searchDisplayList.value = full.slice(0, SEARCH_PAGE_SIZE)
+  searchListFinished.value = full.length <= SEARCH_PAGE_SIZE
+}
+
+function onSearchListLoad() {
+  if (!searchKeyword.value) {
+    searchListLoading.value = false
+    return
+  }
+  if (list.value.length === 0) {
+    searchListLoading.value = true
+    searchListError.value = false
+    fetchStoreList()
+      .then(({ storeList: stores }) => {
+        list.value = stores
+        resetSearchDisplayList()
+      })
+      .catch(() => {
+        searchListError.value = true
+      })
+      .finally(() => {
+        searchListLoading.value = false
+      })
+    return
+  }
+  searchListLoading.value = true
+  searchListError.value = false
+  const full = searchFilteredList.value
+  const start = searchDisplayList.value.length
+  const nextBatch = full.slice(start, start + SEARCH_PAGE_SIZE)
+  for (const item of nextBatch)
+    searchDisplayList.value.push(item)
+  searchListLoading.value = false
+  if (searchDisplayList.value.length >= full.length)
+    searchListFinished.value = true
+}
+
+/** 弹层打开时：清空关键词，默认展示最近 10 家 */
+watch(searchPopupShow, (open) => {
+  if (open) {
+    searchVal.value = ''
+    nextTick(resetSearchDisplayList)
+  }
+})
+/** 搜索防抖结束后：只展示前 20 条，滚动再加载更多 */
+watch(searchKeyword, () => {
+  if (searchPopupShow.value)
+    nextTick(resetSearchDisplayList)
+})
+
+function openSearchPopup() {
+  searchPopupShow.value = true
+  searchListError.value = false
+  if (!list.value.length) {
+    fetchStoreList()
+      .then(({ storeList: stores }) => {
+        list.value = stores
+        resetSearchDisplayList()
+      })
+      .catch(() => {
+        searchListError.value = true
+      })
+  }
+}
+
+function onSelectStoreFromSearch(store) {
+  searchPopupShow.value = false
+  currentStore.value = store
+  if (map.value && store?.coordinates?.longitude != null && store?.coordinates?.latitude != null) {
+    map.value.setZoomAndCenter(18, [store.coordinates.longitude, store.coordinates.latitude], false)
+  }
+  // nextTick(() => {
+  //   show.value = true
+  // })
+}
 
 /** 初始化地图（动态 import 避免 SSG 时 Node 无 window） */
 async function initMap() {
@@ -141,6 +258,7 @@ function onGeolocationComplete(AmapInstance, data) {
   const center = parsePositionToCenter(position)
   if (!center || !map.value)
     return
+  currentLocation.value = center
   const fromSearchStore = !!route.query.storeId
   if (!fromSearchStore)
     setMapCenter(center)
@@ -159,6 +277,63 @@ function onGeolocationError(data) {
   geolocationDone.value = true
   tryEndFirstScreenLoading()
 }
+
+/** 两经纬度点之间的球面距离（km），Haversine 公式 */
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371
+  const toRad = d => d * Math.PI / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
+/** 距离当前定位最近的 10 家门店（需先定位成功且有门店数据），带距离 km */
+const nearestStoresWithDistance = computed(() => {
+  const loc = currentLocation.value
+  const stores = list.value
+  if (!loc?.length || loc.length < 2 || !stores?.length)
+    return []
+  const [lng, lat] = loc
+  return [...stores]
+    .filter(s => s.coordinates?.latitude != null && s.coordinates?.longitude != null)
+    .map(store => ({
+      store,
+      distance: Math.round(haversineKm(lat, lng, store.coordinates.latitude, store.coordinates.longitude) * 10) / 10,
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 10)
+})
+
+/** 搜索弹层列表实际展示的数据：无关键词时默认展示「离你最近」10 家（带距离），有关键词时展示搜索结果（分批，也带距离） */
+const searchListDisplay = computed(() => {
+  if (searchKeyword.value) {
+    const loc = currentLocation.value
+    return searchDisplayList.value.map((store) => {
+      let distance
+      if (loc?.length >= 2 && store.coordinates?.latitude != null && store.coordinates?.longitude != null)
+        distance = Math.round(haversineKm(loc[1], loc[0], store.coordinates.latitude, store.coordinates.longitude) * 10) / 10
+      return { store, distance }
+    }).sort((a, b) => {
+      const da = a.distance
+      const db = b.distance
+      if (da == null && db == null)
+        return 0
+      if (da == null)
+        return 1
+      if (db == null)
+        return -1
+      return da - db
+    })
+  }
+  return nearestStoresWithDistance.value
+})
+/** 无关键词时列表已「加载完」（只展示最近 10 家，不需 load more） */
+const searchListFinishedEffective = computed(() =>
+  searchKeyword.value ? searchListFinished.value : true,
+)
 
 /** 请求门店列表，返回带坐标的门店与点位数组 */
 function fetchStoreList() {
@@ -367,11 +542,24 @@ watch(
   { immediate: true },
 )
 
-/** 根据 isDark 设置地图底图样式（深色/标准） */
+/** 根据 isDark 设置地图底图样式（深色/标准）；返回 Promise，地图样式切换完成后再 resolve（高德无完成回调，用延迟近似） */
 function applyMapStyle() {
   if (!map.value)
-    return
-  map.value.setMapStyle(isDark.value ? 'amap://styles/dark' : 'amap://styles/normal')
+    return Promise.resolve()
+  const style = isDark.value ? 'amap://styles/dark' : 'amap://styles/normal'
+  return new Promise((resolve) => {
+    nextTick(() => {
+      map.value?.setMapStyle(style)
+      setTimeout(resolve, 1800)
+    })
+  })
+}
+
+function onThemeToggle() {
+  themeChanging.value = true
+  nextTick(() => {
+    toggleDark()
+  })
 }
 
 onMounted(() => {
@@ -405,7 +593,11 @@ onMounted(() => {
 })
 
 watch(isDark, () => {
-  applyMapStyle()
+  const p = applyMapStyle()
+  if (p)
+    p.finally(() => { themeChanging.value = false })
+  else
+    themeChanging.value = false
 })
 
 /** 定位到当前位置：请求定位后居中并更新蓝色标记，复用 onGeolocationComplete / onGeolocationError */
@@ -437,6 +629,18 @@ function locateToCurrentPosition() {
         </div>
       </div>
     </Transition>
+    <!-- 主题切换中：等地图样式完全切换后再隐藏 -->
+    <Transition name="fade">
+      <div
+        v-show="themeChanging"
+        class="fixed inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/50"
+      >
+        <div class="i-line-md-loading-loop text-5xl text-white" />
+        <div class="text-sm text-white/90">
+          切换主题中…
+        </div>
+      </div>
+    </Transition>
     <div
       class="h-12 w-full flex items-center justify-between gap-2 bg-white p-2 dark:bg-[#1b1b1b]"
       border="b gray-200 dark:border-gray-700"
@@ -448,7 +652,7 @@ function locateToCurrentPosition() {
     >
       <!-- eslint-disable-next-line uno/order -- 大点击区与 active 反馈顺序 -->
       <div class="flex items-center gap-1">
-        <div class="icon-link" @click="router.push('/search')">
+        <div class="icon-link" @click="openSearchPopup">
           <div class="i-carbon-search text-xl text-gray-800 dark:text-gray-200" />
         </div>
         <div class="icon-link" @click="authorPopupShow = true">
@@ -463,7 +667,7 @@ function locateToCurrentPosition() {
         </div>
       </div>
       <div class="flex items-center gap-1">
-        <div class="icon-link" @click="toggleDark()">
+        <div class="icon-link" @click="onThemeToggle">
           <div v-if="isDark" class="i-carbon-sun text-xl text-amber-400" />
           <div v-else class="i-carbon-moon text-xl text-gray-600" />
         </div>
@@ -588,11 +792,78 @@ function locateToCurrentPosition() {
         </div>
       </div>
     </van-popup>
+    <!-- 搜索弹层：全屏从右滑出，替代路由 /search，避免 GitHub Pages 下 router.push 慢 -->
+    <van-popup
+      v-model:show="searchPopupShow"
+      position="right"
+      :style="{ width: '100%', height: '100%' }"
+      class="search-popup"
+    >
+      <div class="h-full flex flex-col bg-white dark:bg-[#1b1b1b]">
+        <div
+          class="h-12 w-full flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 p-2 dark:border-gray-700"
+        >
+          <div class="icon-link" @click="searchPopupShow = false">
+            <div class="i-carbon-arrow-left text-xl text-gray-800 dark:text-gray-200" />
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="i-line-md-coffee-loop text-2xl text-gray-800 dark:text-gray-200" />
+            <div class="text-gray-900 font-bold dark:text-gray-100">
+              搜索门店
+            </div>
+          </div>
+          <div class="icon-link" @click="onThemeToggle">
+            <div v-if="isDark" class="i-carbon-sun text-xl text-amber-400" />
+            <div v-else class="i-carbon-moon text-xl text-gray-600" />
+          </div>
+        </div>
+        <div class="shrink-0">
+          <van-search v-model="searchVal" placeholder="请输入搜索关键字" />
+        </div>
+        <div class="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-2">
+          <van-list
+            v-model:loading="searchListLoading"
+            v-model:error="searchListError"
+            error-text="请求失败，点击重新加载"
+            :finished="searchListFinishedEffective"
+            finished-text="没有更多了"
+            :immediate-check="true"
+            @load="onSearchListLoad"
+          >
+            <div
+              v-for="(item, index) in searchListDisplay"
+              :key="item.store.id"
+              class="cursor-pointer border-b border-gray-200 py-3 dark:border-gray-700 active:bg-gray-100 dark:active:bg-gray-800"
+              @click="onSelectStoreFromSearch(item.store)"
+            >
+              <p class="text-gray-900 font-bold dark:text-gray-100">
+                {{ item.store.name }}
+              </p>
+              <div class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                {{ item.store.address?.streetAddressLine3 || item.store.address?.city || '—' }}
+              </div>
+              <div class="mt-1 flex items-center gap-2 text-xs">
+                <span v-if="item.distance != null" class="text-amber-600 dark:text-amber-400">{{ index === 0 ? `离您最近 ${item.distance}` : item.distance }} km</span>
+                <div v-if="item.store.features?.length" class="text-green-700 font-bold dark:text-green-400">
+                  {{ item.store.features.join(' ') }}
+                </div>
+              </div>
+            </div>
+          </van-list>
+          <div
+            v-if="searchListFinished && searchDisplayList.length === 0 && searchFilteredList.length === 0"
+            class="py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+          >
+            {{ list.length ? '未找到相关门店' : '加载中…' }}
+          </div>
+        </div>
+      </div>
+    </van-popup>
     <van-popup v-model:show="authorPopupShow" position="center" round>
       <div
         class="w-60 flex flex-col justify-center bg-#fff p3 py6 dark:bg-#1b1b1b dark:text-gray-200"
       >
-        <img class="m-auto h-24 w-24 rounded-2" src="/me.jpg" alt="">
+        <img class="m-auto h-24 w-24 rounded-2" src="/me.jpg" alt="" loading="lazy">
         <div mt3>
           Author: <span color-pink-3 font-bold>Joie Pink</span>
         </div>
